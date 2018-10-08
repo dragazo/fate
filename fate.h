@@ -21,7 +21,8 @@ private: // -- data -- //
 
 public: // -- ctor / dtor / asgn -- //
 	
-	// creates a fate object that is not associated with a function object (empty)
+	// creates a fate object that is not associated with a function object (empty).
+	// does not invoke the T constructor, so this still works for types that lack a default ctor.
 	constexpr fate() noexcept : has_func(false) {}
 
 	// creates a fate object for the given function-like object - the argument will be forwarded to the T constructor.
@@ -50,22 +51,24 @@ public: // -- ctor / dtor / asgn -- //
 	}
 
 	fate(const fate&) = delete;
-	
-	template<std::enable_if_t<std::is_nothrow_move_constructible_v<T>, int> = 0>
-	fate(fate &&other) noexcept
+	fate(fate &&other) noexcept : has_func(false)
 	{
 		// if other has a function
 		if (other.has_func)
 		{
-			// move other's data
-			new(&func_buf) T(std::move(*(T*)&other.func_buf));
-			has_func = true;
+			// attempt to steal it - we guarantee no-throw so try is necessary
+			try
+			{
+				// move or copy other's function, depending on if moving is safe
+				new(&func_buf) T(std::move_if_noexcept(*(T*)&other.func_buf));
+				// only mark as having a func if that succeeded (so we don't call garbage on destruction)
+				has_func = true;
 
-			// empty other
-			other.release();
+				// empty other (also only if the move/copy succeeded)
+				other.release();
+			}
+			catch (...) {}
 		}
-		// otherwise mark ourselves as empty
-		else has_func = false;
 	}
 
 	fate &operator=(const fate&) = delete;
@@ -74,7 +77,7 @@ public: // -- ctor / dtor / asgn -- //
 public: // -- utilities -- //
 
 	// returns true iff this fate object is still associated with a function object
-	inline explicit operator bool() const noexcept { return has_func; }
+	inline constexpr explicit operator bool() const noexcept { return has_func; }
 	
 	// returns true iff this fate object is not associated with a function object
 	inline constexpr bool empty() const noexcept { return !has_func; }
@@ -121,12 +124,12 @@ public: // -- ctor / dtor / asgn -- //
 			catch (...) {}
 
 			// then destroy it
-			func = nullptr;
+			release();
 		}
 	}
 
 	fate(const fate&) = delete;
-	fate(fate &&other) noexcept : func(other.func) { other.func = nullptr; }
+	constexpr fate(fate &&other) noexcept : func(other.func) { other.release(); }
 
 	fate &operator=(const fate&) = delete;
 	fate &operator=(fate&&) = delete;
@@ -134,18 +137,18 @@ public: // -- ctor / dtor / asgn -- //
 public: // -- utilities -- //
 
 	// returns true iff this fate object is still associated with a function object
-	inline explicit operator bool() const noexcept { return func; }
+	inline constexpr explicit operator bool() const noexcept { return func; }
 
 	// returns true iff this fate object is not associated with a function object
 	inline constexpr bool empty() const noexcept { return !func; }
 
 	// abandons the function (will no longer be executed at the end of fate's lifetime)
-	inline void release() noexcept { func = nullptr; }
+	inline constexpr void release() noexcept { func = nullptr; }
 };
 
 // creates a fate object from the given function-like object.
 // effectively just a means of template class type deduction without needing C++17.
 template<typename T>
-auto make_fate(T &&arg) { return fate<std::decay_t<T>>{std::forward<T>(arg)}; }
+constexpr auto make_fate(T &&arg) { return fate<std::decay_t<T>>{std::forward<T>(arg)}; }
 
 #endif

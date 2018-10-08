@@ -27,8 +27,21 @@ void foo()
 int main()
 {
 	{
+		struct t_t
+		{
+			t_t() {}
+			t_t(const t_t&) {}
+			t_t(t_t&&) {  }
+			void operator()() { std::cerr << "thingy\n"; }
+		} thingy;
+
 		auto _fate = make_fate(foo);
 		std::cerr << "fate size: " << sizeof(_fate) << '\n';
+
+		auto _fate2 = make_fate(thingy);
+		auto _fate3 = std::move(_fate2);
+		std::cerr << "nothrow move ctor: " << std::is_nothrow_move_constructible_v<decltype(thingy)> << '\n';
+		std::cerr << "fate size: " << sizeof(_fate2) << '\n';
 	}
 
 	std::cerr << '\n';
