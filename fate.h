@@ -6,6 +6,8 @@
 
 // fate (function at the end) is a wrapper for any any function-like object that takes no args.
 // at the end of the fate object's lifetime, the function is invoked once.
+// the type parameter T is the type of object to store (e.g. binding "void foo()" would require "T = void(*)()").
+// i recommend using auto type deduction and the make_fate() helper function - especially for binding lambdas.
 template<typename T>
 class fate
 {
@@ -26,8 +28,10 @@ public: // -- ctor / dtor / asgn -- //
 	constexpr fate() noexcept : has_func(false) {}
 
 	// creates a fate object for the given function-like object - the argument will be forwarded to the T constructor.
+	// on success, a valid fate is made that binds the given function-like object.
+	// on failure, the created fate instance is guaranteed to be empty and an exception is thrown.
 	template<typename J>
-	explicit fate(J &&arg) : has_func(false)
+	constexpr explicit fate(J &&arg) : has_func(false)
 	{
 		// construct the function object
 		new(&func_buf) T(std::forward<J>(arg));
@@ -35,7 +39,8 @@ public: // -- ctor / dtor / asgn -- //
 		has_func = true;
 	}
 
-	// calls the stored function (if any)
+	// calls the stored function (if any).
+	// if an exception is throw, it is ignored.
 	inline ~fate()
 	{
 		// if we have a function
@@ -51,12 +56,23 @@ public: // -- ctor / dtor / asgn -- //
 	}
 
 	fate(const fate&) = delete;
-	fate(fate &&other) noexcept : has_func(false)
+
+	// attempts to transfer other's fate to this object via move semantics.
+	// if T is nothrow move constructable:
+	//     this is a nothrow operation.
+	//     the function-like object is transfered via move constructor.
+	// otherwise, if T has a copy constructor:
+	//     this is a potentially-throwing operation with the strong exception guarantee.
+	//     the function-like object is transfered via copy constructor.
+	// otherwise:
+	//     this is a potentially-throwing operation with the basic exception guarantee.
+	//     the function-like object is transfered via move constructor.
+	// on success, this object is guaranteed to have other's function and other is guaranteed to be empty.
+	constexpr fate(fate &&other) noexcept(std::is_nothrow_move_constructible_v<T> || std::is_nothrow_copy_constructible_v<T>) : has_func(false)
 	{
 		// if other has a function
 		if (other.has_func)
 		{
-			// attempt to steal it - we guarantee no-throw so try is necessary
 			try
 			{
 				// move or copy other's function, depending on if moving is safe
@@ -67,7 +83,8 @@ public: // -- ctor / dtor / asgn -- //
 				// empty other (also only if the move/copy succeeded)
 				other.release();
 			}
-			catch (...) {}
+			// if we got an error, rethrow it
+			catch (...) { throw; }
 		}
 	}
 
@@ -83,7 +100,7 @@ public: // -- utilities -- //
 	inline constexpr bool empty() const noexcept { return !has_func; }
 
 	// abandons the function (will no longer be executed at the end of fate's lifetime)
-	inline void release() noexcept
+	inline constexpr void release() noexcept
 	{
 		// only do this if we have a function
 		if (has_func)
@@ -111,9 +128,10 @@ public: // -- ctor / dtor / asgn -- //
 	constexpr fate() noexcept : func(nullptr) {}
 
 	// creates a fate object for the given function
-	explicit fate(T(*f)()) noexcept : func(f) {}
+	constexpr explicit fate(T(*f)()) noexcept : func(f) {}
 
-	// calls the stored function (if any)
+	// calls the stored function (if any).
+	// if an exception is throw, it is ignored.
 	inline ~fate()
 	{
 		// if we have a function
@@ -129,6 +147,10 @@ public: // -- ctor / dtor / asgn -- //
 	}
 
 	fate(const fate&) = delete;
+
+	// transfers other's fate to this object via move semantics.
+	// this object is guaranteed to have other's function.
+	// other is guaranteed to be empty.
 	constexpr fate(fate &&other) noexcept : func(other.func) { other.release(); }
 
 	fate &operator=(const fate&) = delete;
@@ -145,6 +167,8 @@ public: // -- utilities -- //
 	// abandons the function (will no longer be executed at the end of fate's lifetime)
 	inline constexpr void release() noexcept { func = nullptr; }
 };
+
+// -------------------------------------------------------------- //
 
 // creates a fate object from the given function-like object.
 // effectively just a means of template class type deduction without needing C++17.
