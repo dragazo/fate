@@ -92,6 +92,57 @@ public: // -- utilities -- //
 	}
 };
 
+// specialization for space-saving with function pointers
+template<typename T>
+class fate<T(*)()>
+{
+private: // -- data -- //
+
+	// this holds a pointer to the function to call at the end of the fate object's lifetime.
+	// at all times this shall either hold a valid function pointer or nullptr to signify no function (empty).
+	T(*func)();
+
+public: // -- ctor / dtor / asgn -- //
+
+	// creates a fate object that is not associated with a function object (empty)
+	constexpr fate() noexcept : func(nullptr) {}
+
+	// creates a fate object for the given function
+	explicit fate(T(*f)()) noexcept : func(f) {}
+
+	// calls the stored function (if any)
+	inline ~fate()
+	{
+		// if we have a function
+		if (func)
+		{
+			// attempt to call it
+			try { func(); }
+			catch (...) {}
+
+			// then destroy it
+			func = nullptr;
+		}
+	}
+
+	fate(const fate&) = delete;
+	fate(fate &&other) noexcept : func(other.func) { other.func = nullptr; }
+
+	fate &operator=(const fate&) = delete;
+	fate &operator=(fate&&) = delete;
+
+public: // -- utilities -- //
+
+	// returns true iff this fate object is still associated with a function object
+	inline explicit operator bool() const noexcept { return func; }
+
+	// returns true iff this fate object is not associated with a function object
+	inline constexpr bool empty() const noexcept { return !func; }
+
+	// abandons the function (will no longer be executed at the end of fate's lifetime)
+	inline void release() noexcept { func = nullptr; }
+};
+
 // creates a fate object from the given function-like object.
 // effectively just a means of template class type deduction without needing C++17.
 template<typename T>

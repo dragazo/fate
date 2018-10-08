@@ -28,8 +28,7 @@ int main()
 {
 	{
 		auto _fate = make_fate(foo);
-
-		std::cerr << "void(*)() fate size: " << sizeof(_fate) << '\n';
+		std::cerr << "fate size: " << sizeof(_fate) << '\n';
 	}
 
 	std::cerr << '\n';
@@ -41,6 +40,7 @@ int main()
 		double *arr = new double[16];
 		// create a fate object to ensure it gets deleted
 		auto _fate = make_fate([=]() { delete[] arr; std::cerr << "array freed by fate\n"; });
+		std::cerr << "fate size: " << sizeof(_fate) << '\n';
 
 		// ...
 
@@ -65,6 +65,7 @@ int main()
 		dat.lock();
 		// create a fate object to ensure it gets unlocked at some point
 		auto _unlocker = make_fate([&]() { dat.unlock(); std::cerr << "resource unlocked by fate\n"; });
+		std::cerr << "fate size: " << sizeof(_unlocker) << '\n';
 
 		// ... do mutatey stuff now that it's locked
 
