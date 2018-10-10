@@ -24,8 +24,43 @@ void foo()
 	std::cerr << "foo\n";
 }
 
+// type used to test fate contract edge conditions - what if the stored function calls the fate object explicitly
+struct fate_breaker
+{
+	fate<fate_breaker> *fate_obj;
+	void operator()()
+	{
+		std::cerr << "fate breaker :3\n";
+		(*fate_obj)();
+	}
+};
+
+fate<void(*)()> *fate_breaker_func_val;
+void fate_breaker_func()
+{
+	std::cerr << "fate breaker 2 :3\n";
+	(*fate_breaker_func_val)();
+}
+
 int main()
 {
+
+	{
+		std::cerr << "here\n";
+		fate<fate_breaker> breaker;
+		breaker = make_fate(fate_breaker{&breaker});
+	}
+
+	std::cerr << "\n\n";
+
+	{
+		std::cerr << "here2\n";
+		fate<void(*)()> _loc_fate = make_fate(fate_breaker_func);
+		fate_breaker_func_val = &_loc_fate;
+	}
+
+	std::cerr << "\n\n";
+
 	{
 		struct t_t
 		{
@@ -34,6 +69,8 @@ int main()
 			t_t(t_t&&) {  }
 			void operator()() { std::cerr << "thingy\n"; }
 		} thingy;
+
+		
 
 		//fate _fate_1(foo);
 		//fate _fate_3([] { foo(); });

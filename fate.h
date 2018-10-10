@@ -98,17 +98,20 @@ public: // -- utilities -- //
 	// triggers the fate object to call its stored function (if any).
 	// if the function-like object throws an exception, it is caught and ignored.
 	// the resulting fate object is guaranteed to be empty after this.
-	inline constexpr void operator()() noexcept
+	constexpr void operator()() noexcept
 	{
 		// if we have a function
 		if (has_func)
 		{
+			// mark that we're empty (so that if the function calls this function we don't call it multiple times)
+			has_func = false;
+
 			// attempt to call it
 			try { (*(T*)&func_buf)(); }
 			catch (...) {}
 
 			// then destroy it
-			release();
+			(*(T*)&func_buf).~T();
 		}
 	}
 
@@ -119,7 +122,7 @@ public: // -- utilities -- //
 	inline constexpr bool empty() const noexcept { return !has_func; }
 
 	// abandons the function (will no longer be executed at the end of fate's lifetime)
-	inline constexpr void release() noexcept
+	constexpr void release() noexcept
 	{
 		// only do this if we have a function
 		if (has_func)
@@ -173,17 +176,18 @@ public: // -- utilities -- //
 	// triggers the fate object to call its stored function (if any).
 	// if the function-like object throws an exception, it is caught and ignored.
 	// the resulting fate object is guaranteed to be empty after this.
-	inline constexpr void operator()() noexcept
+	constexpr void operator()() noexcept
 	{
 		// if we have a function
 		if (func)
 		{
-			// attempt to call it
-			try { func(); }
-			catch (...) {}
+			// mark that we're empty (so that if the function calls this function we don't call it multiple times)
+			T(*_f)() = func;
+			func = nullptr;
 
-			// then destroy it
-			release();
+			// attempt to call it
+			try { _f(); }
+			catch (...) {}
 		}
 	}
 
