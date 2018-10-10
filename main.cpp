@@ -35,6 +35,12 @@ int main()
 			void operator()() { std::cerr << "thingy\n"; }
 		} thingy;
 
+		//fate _fate_1(foo);
+		//fate _fate_3([] { foo(); });
+
+		//fate _fate_2 = foo;
+		//fate _fate_4 = [] {};
+
 		auto _fate = make_fate(foo);
 		std::cerr << "fate size: " << sizeof(_fate) << '\n';
 
@@ -42,6 +48,8 @@ int main()
 		auto _fate3 = std::move(_fate2);
 		std::cerr << "nothrow move ctor: " << std::is_nothrow_move_constructible_v<decltype(thingy)> << '\n';
 		std::cerr << "fate size: " << sizeof(_fate2) << '\n';
+
+		auto _fate4 = make_fate([] { std::cerr << std::isnan(5.6) << '\n'; });
 	}
 
 	std::cerr << '\n';

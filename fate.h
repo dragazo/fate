@@ -4,8 +4,11 @@
 #include <utility>
 #include <type_traits>
 
-// fate (function at the end) is a wrapper for any any function-like object that takes no args.
-// at the end of the fate object's lifetime, the function is invoked once.
+// fate (function at the end) is a wrapper for any function-like object that takes no args.
+// a fate object is bound to a function-like object and forms a contract with it to invoke it exactly one time (unless explicitly told not to).
+// upon being invoked explicitly, the fate instance becomes "empty" and will no longer be attached to its function-like object.
+// at the end of the fate object's lifetime, it will invoke its stored function if it still has one.
+// this wrapper is not designed to be threadsafe.
 // the type parameter T is the type of object to store (e.g. binding "void foo()" would require "T = void(*)()").
 // i recommend using auto type deduction and the make_fate() helper function - especially for binding lambdas.
 template<typename T>
@@ -15,47 +18,13 @@ private: // -- data -- //
 
 	// this buffer is used to store the function object, if any.
 	// at all times this shall either hold a constructed function object or nothing at all.
-	// i.e. if the buffer doesn't contain a function object it need not be destroyed.
+	// i.e. if the buffer doesn't contain a function object it need not (and must not) be destroyed.
 	alignas(T) char func_buf[sizeof(T)];
 
 	// marks if func_buf currently holds a (constructed) function object.
 	bool has_func;
 
-public: // -- ctor / dtor / asgn -- //
-	
-	// creates a fate object that is not associated with a function object (empty).
-	// does not invoke the T constructor, so this still works for types that lack a default ctor.
-	constexpr fate() noexcept : has_func(false) {}
-
-	// creates a fate object for the given function-like object - the argument will be forwarded to the T constructor.
-	// on success, a valid fate is made that binds the given function-like object.
-	// on failure, the created fate instance is guaranteed to be empty and an exception is thrown.
-	template<typename J>
-	constexpr explicit fate(J &&arg) : has_func(false)
-	{
-		// construct the function object
-		new(&func_buf) T(std::forward<J>(arg));
-		// only mark as having a func if that succeeded (so we don't call garbage on destruction)
-		has_func = true;
-	}
-
-	// calls the stored function (if any).
-	// if an exception is throw, it is ignored.
-	inline ~fate()
-	{
-		// if we have a function
-		if (has_func)
-		{
-			// attempt to call it
-			try { (*(T*)&func_buf)(); }
-			catch (...) {}
-
-			// then destroy it
-			release();
-		}
-	}
-
-	fate(const fate&) = delete;
+private: // -- helpers -- //
 
 	// attempts to transfer other's fate to this object via move semantics.
 	// if T is nothrow move constructable:
@@ -68,7 +37,8 @@ public: // -- ctor / dtor / asgn -- //
 	//     this is a potentially-throwing operation with the basic exception guarantee.
 	//     the function-like object is transfered via move constructor.
 	// on success, this object is guaranteed to have other's function and other is guaranteed to be empty.
-	constexpr fate(fate &&other) noexcept(std::is_nothrow_move_constructible_v<T> || std::is_nothrow_copy_constructible_v<T>) : has_func(false)
+	// WARNING - assumes this object is currently empty.
+	void transfer(fate &&other) noexcept(std::is_nothrow_move_constructible_v<T> || std::is_nothrow_copy_constructible_v<T>)
 	{
 		// if other has a function
 		if (other.has_func)
@@ -79,7 +49,6 @@ public: // -- ctor / dtor / asgn -- //
 				new(&func_buf) T(std::move_if_noexcept(*(T*)&other.func_buf));
 				// only mark as having a func if that succeeded (so we don't call garbage on destruction)
 				has_func = true;
-
 				// empty other (also only if the move/copy succeeded)
 				other.release();
 			}
@@ -88,10 +57,60 @@ public: // -- ctor / dtor / asgn -- //
 		}
 	}
 
+public: // -- ctor / dtor / asgn -- //
+	
+	// creates a fate object that is not associated with a function object (empty).
+	// does not invoke the T constructor, so this still works for types that lack a default ctor.
+	inline constexpr fate() noexcept : has_func(false) {}
+
+	// creates a fate object for the given function-like object - the argument will be forwarded to the T constructor.
+	// on success, a valid fate is made that binds the given function-like object.
+	// on failure, the created fate instance is guaranteed to be empty and an exception is thrown.
+	template<typename J>
+	constexpr explicit fate(J &&arg) noexcept(noexcept((T)std::forward<J>(arg))) : has_func(false)
+	{
+		// construct the function object
+		new(&func_buf) T(std::forward<J>(arg));
+		// only mark as having a func if that succeeded (so we don't call garbage on destruction)
+		has_func = true;
+	}
+
+	inline ~fate() { (*this)(); }
+
+	fate(const fate&) = delete;
 	fate &operator=(const fate&) = delete;
-	fate &operator=(fate&&) = delete;
+
+	// constructs a new fate object by transfering other's contract to the new instance
+	inline constexpr fate(fate &&other) noexcept(noexcept(transfer(std::move(other)))) : has_func(false)
+	{
+		transfer(std::move(other));
+	}
+	// if this instance currently holds a function, it is triggered. after this, other's contract is transfered to this instance.
+	inline constexpr fate &operator=(fate &&other) noexcept(noexcept(transfer(std::move(other))))
+	{
+		(*this)();
+		transfer(std::move(other));
+		return *this;
+	}
 
 public: // -- utilities -- //
+
+	// triggers the fate object to call its stored function (if any).
+	// if the function-like object throws an exception, it is caught and ignored.
+	// the resulting fate object is guaranteed to be empty after this.
+	inline constexpr void operator()() noexcept
+	{
+		// if we have a function
+		if (has_func)
+		{
+			// attempt to call it
+			try { (*(T*)&func_buf)(); }
+			catch (...) {}
+
+			// then destroy it
+			release();
+		}
+	}
 
 	// returns true iff this fate object is still associated with a function object
 	inline constexpr explicit operator bool() const noexcept { return has_func; }
@@ -125,14 +144,36 @@ private: // -- data -- //
 public: // -- ctor / dtor / asgn -- //
 
 	// creates a fate object that is not associated with a function object (empty)
-	constexpr fate() noexcept : func(nullptr) {}
+	inline constexpr fate() noexcept : func(nullptr) {}
 
 	// creates a fate object for the given function
-	constexpr explicit fate(T(*f)()) noexcept : func(f) {}
+	inline constexpr explicit fate(T(*f)()) noexcept : func(f) {}
 
-	// calls the stored function (if any).
-	// if an exception is throw, it is ignored.
-	inline ~fate()
+	inline ~fate() { (*this)(); }
+
+	fate(const fate&) = delete;
+	fate &operator=(const fate&) = delete;
+	
+	// constructs a new fate object by transfering other's contract to the new instance
+	inline constexpr fate(fate &&other) noexcept : func(other.func)
+	{
+		other.func = nullptr;
+	}
+	// if this instance currently holds a function, it is triggered. after this, other's contract is transfered to this instance.
+	inline constexpr fate &operator=(fate &&other) noexcept
+	{
+		(*this)();
+		func = other.func;
+		other.func = nullptr;
+		return *this;
+	}
+
+public: // -- utilities -- //
+
+	// triggers the fate object to call its stored function (if any).
+	// if the function-like object throws an exception, it is caught and ignored.
+	// the resulting fate object is guaranteed to be empty after this.
+	inline constexpr void operator()() noexcept
 	{
 		// if we have a function
 		if (func)
@@ -145,18 +186,6 @@ public: // -- ctor / dtor / asgn -- //
 			release();
 		}
 	}
-
-	fate(const fate&) = delete;
-
-	// transfers other's fate to this object via move semantics.
-	// this object is guaranteed to have other's function.
-	// other is guaranteed to be empty.
-	constexpr fate(fate &&other) noexcept : func(other.func) { other.release(); }
-
-	fate &operator=(const fate&) = delete;
-	fate &operator=(fate&&) = delete;
-
-public: // -- utilities -- //
 
 	// returns true iff this fate object is still associated with a function object
 	inline constexpr explicit operator bool() const noexcept { return func; }
