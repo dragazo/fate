@@ -26,26 +26,26 @@ The template argument is the type to store internally, so binding a raw function
 * A bound function will be called exactly once by its `fate` instance unless you explicitly`release()` it from this contract.
 
 **Member Functions:**
-* `void operator()() noexcept` - This is known as "invoking" the `fate` instance. Calls the stored function (if any) and enters the empty state. Any exceptions are caught and ignored.
-* `explicit operator bool() const noexcept` - Returns true iff the instance is not empty.
-* `bool empty() const noexcept` - Returns true iff the instance is empty.
-* `void release() noexcept` - Enters the empty state without invoking the stored function (if any).
+* `void operator()()` - This is known as "invoking" the `fate` instance. Calls the stored function (if any) and enters the empty state. Any exceptions are caught and ignored.
+* `operator bool()` - Returns true iff the instance is not empty.
+* `bool empty()` - Returns true iff the instance is empty.
+* `void release()` - Enters the empty state without invoking the stored function (if any).
 
 **The following concern `fate`'s C++ intrinsics:**
-* `fate` is always default-constructible to empty *(even if T lacks a default constructor)*.
+* `fate` is always default-constructible to empty *(even if `T` lacks a default constructor)*.
 * `fate` is explicitly-constructible from an argument that can be forwarded to the `T` constructor. If this fails, the fate object is empty and the exception is rethrown.
 * The `fate` destructor invokes the instance.
 * `fate` is not copy-constructible or copy-assignable.
-* `fate` is move-constructible. On success, the destination has the source's function-like object (if any) and the source is empty. The `noexcept` specifier will be deduced based on the transfer method selected. The following rules apply to this action:
-  * If T is nothrow move constructible:
+* `fate` is move-constructible. On success, the destination has the source's function-like object (if any) and the source is empty. The following rules apply to this action:
+  * If `T` is nothrow move constructible:
     * The function-like object is transfered via move constructor.
     * This is a nothrow operation with the nofail guarantee.
-  * Otherwise, if T has a copy constructor:
+  * Otherwise, if `T` has a copy constructor:
     * The function-like object is transfered via copy constructor.
-    * This is a potentially-throwing operation with at least the strong guarantee if T has at least the strong guarantee.
+    * This is a potentially-throwing operation with at least the strong guarantee if `T` has at least the strong guarantee.
   * Otherwise:
     * The function-like object is transfered via move constructor.
-    * This is a potentially-throwing operation with at least the basic guarantee if T has at least the basic guarantee.
+    * This is a potentially-throwing operation with at least the basic guarantee if `T` has at least the basic guarantee.
     * This is the only way a `fate` contract can be violated.
 * `fate` is move-assignable, which invokes the current instance and then follows the move constructor process described above.
 
