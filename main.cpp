@@ -49,6 +49,10 @@ int main()
 		std::cerr << "here\n";
 		fate<fate_breaker> breaker;
 		breaker = make_fate(fate_breaker{&breaker});
+
+		breaker = std::move(breaker);
+		
+		if (!breaker) { std::cerr << "bad news, everyone\n"; }
 	}
 
 	std::cerr << "\n\n";
