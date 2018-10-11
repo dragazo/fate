@@ -9,7 +9,7 @@ It was **FATE** that you'd stumble onto this page.
 
 **Introducing ... FATE!!!**
 
-FATE *(function at the end)* is a generic RAII wrapper that calls a function-like object at the end of its lifetime.
+FATE *(function at the end)* is a generic RAII wrapper that can be bound to a function-like object. It then guarantees that the function is called exactly one time - either explicitly by the user or implicitly upon destruction.
 
 All implementation is supplied by [`fate.h`](fate.h).
 
@@ -20,16 +20,23 @@ Any function-like object that accepts zero arguments is a valid target for a `fa
 
 The template argument is the type to store internally, so binding a raw function e.g. `void foo();` would require `fate<void(*)()>`.
 
-A `fate` object at all times either contains a valid function-like object or is "empty".
-An empty `fate` object does not contain a function-like object, but you are guaranteed there will be no dynamic allocations.
+**Guarantees:**
+* A `fate` object at all times either contains a valid function-like object or is "empty".
+* `fate<T>` will make no dynamic allocations *(though `T` is permitted to do so)*.
+* A bound function will be called exactly once by its `fate` instance unless you explicitly`release()` it from this contract.
 
-The following concern `fate`'s C++ intrinsics:
-* `fate` is default-constructible to empty, and is guaranteed to be noexcept.
+**Member Functions:**
+* `void operator()() noexcept` - This is known as "invoking" the `fate` instance. Calls the stored function (if any) and enters the empty state. Any exceptions are caught and ignored.
+* `explicit operator bool() const noexcept` - Returns true iff the instance is not empty.
+* `bool empty() const noexcept` - Returns true iff the instance is empty.
+* `void release() noexcept` - Enters the empty state without invoking the stored function (if any).
+
+**The following concern `fate`'s C++ intrinsics:**
+* `fate` is always default-constructible to empty *(even if T lacks a default constructor)*.
 * `fate` is explicitly-constructible from an argument that can be forwarded to the `T` constructor. If this fails, the fate object is empty and the exception is rethrown.
-* The `fate` destructor invokes the stored function-like object (if any). If an exception is throw, it is caught and ignored. The `fate` instance is left in an undefined state.
-* Like all unique contract RAII types, `fate` is not copy constructible or copy assignable.
-* However, due to the oddity of `fate`'s contract, it is also not move assignable.
-* `fate` is move constructible. On success, the destination has the source's function-like object (if any) and the source is empty. The `noexcept` specifier will be deduced based on the transfer method selected. The following rules apply to this action:
+* The `fate` destructor invokes the instance.
+* `fate` is not copy-constructible or copy-assignable.
+* `fate` is move-constructible. On success, the destination has the source's function-like object (if any) and the source is empty. The `noexcept` specifier will be deduced based on the transfer method selected. The following rules apply to this action:
   * If T is nothrow move constructible:
     * The function-like object is transfered via move constructor.
     * This is a nothrow operation with the nofail guarantee.
@@ -40,14 +47,7 @@ The following concern `fate`'s C++ intrinsics:
     * The function-like object is transfered via move constructor.
     * This is a potentially-throwing operation with at least the basic guarantee if T has at least the basic guarantee.
     * This is the only way a `fate` contract can be violated.
-
-A `fate` object is explicitly convertible to `bool`, which represents the fate instance currently containing a function-like object.
-The `empty()` method returns the opposite.
-
-The `release()` method can be used to ~destroy destiny~ cause the fate object to enter the empty state without executing its stored function (if any).
-
-Nearly all functions are constant expressions.
-Functions that can deduce their noexcept specifiers do so.
+* `fate` is move-assignable, which invokes the current instance and then follows the move constructor process described above.
 
 ## make_fate
 
@@ -102,7 +102,3 @@ void unlock();
     
 } // BOOM - unlocker goes out of scope and the mutex is unlocked
 ```
-
-## Afterword
-
-If you couldn't tell, at least 90% of the reason I made this was because I liked the name.
