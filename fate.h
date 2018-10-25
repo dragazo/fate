@@ -44,19 +44,12 @@ private: // -- helpers -- //
 		// if other has a function
 		if (other.has_func)
 		{
-			try
-			{
-				// move or copy other's function, depending on if moving is safe
-				new(&func_buf) T(std::move_if_noexcept(*(T*)&other.func_buf));
-				// only mark as having a func if that succeeded (so we don't call garbage on destruction)
-				has_func = true;
-				// empty other (also only if the move/copy succeeded)
-				other.release();
-			}
-			// if we got an error, rethrow it.
-			// the compiler will likely issue a warning about this for noexcept(true),
-			// but that's just because it's not being smart enough to know this can never happen in that case.
-			catch (...) { throw; }
+			// move or copy other's function, depending on if moving is safe
+			new(&func_buf) T(std::move_if_noexcept(*(T*)&other.func_buf));
+			// only mark as having a func if that succeeded (so we don't call garbage on destruction)
+			has_func = true;
+			// empty other (also only if the move/copy succeeded)
+			other.release();
 		}
 	}
 
@@ -64,7 +57,7 @@ public: // -- ctor / dtor / asgn -- //
 	
 	// creates a fate object that is not associated with a function object (empty).
 	// does not invoke the T constructor, so this still works for types that lack a default ctor.
-	inline constexpr fate() noexcept : has_func(false) {}
+	constexpr fate() noexcept : has_func(false) {}
 
 	// creates a fate object for the given function-like object - the argument will be forwarded to the T constructor.
 	// on success, a valid fate is made that binds the given function-like object.
@@ -78,19 +71,19 @@ public: // -- ctor / dtor / asgn -- //
 		has_func = true;
 	}
 
-	inline ~fate() { (*this)(); }
+	~fate() { (*this)(); }
 
 	fate(const fate&) = delete;
 	fate &operator=(const fate&) = delete;
 
 	// constructs a new fate object by transfering other's contract to the new instance
-	inline constexpr fate(fate &&other) noexcept(noexcept(transfer(std::move(other)))) : has_func(false)
+	constexpr fate(fate &&other) noexcept(noexcept(transfer(std::move(other)))) : has_func(false)
 	{
 		transfer(std::move(other));
 	}
 	// if this instance currently holds a function, it is triggered. after this, other's contract is transfered to this instance.
 	// in the special case of self-assignment, does nothing.
-	inline constexpr fate &operator=(fate &&other) noexcept(noexcept(transfer(std::move(other))))
+	constexpr fate &operator=(fate &&other) noexcept(noexcept(transfer(std::move(other))))
 	{
 		if (this != &other)
 		{
@@ -123,12 +116,12 @@ public: // -- utilities -- //
 	}
 
 	// returns true iff this fate object is still associated with a function object
-	inline constexpr explicit operator bool() const noexcept { return has_func; }
+	constexpr explicit operator bool() const noexcept { return has_func; }
 	// returns true iff this fate object is not associated with a function object
-	inline constexpr bool operator!() const noexcept { return !has_func; }
+	constexpr bool operator!() const noexcept { return !has_func; }
 
 	// returns true iff this fate object is not associated with a function object
-	inline constexpr bool empty() const noexcept { return !has_func; }
+	constexpr bool empty() const noexcept { return !has_func; }
 
 	// abandons the function (will no longer be executed at the end of fate's lifetime)
 	constexpr void release() noexcept
@@ -156,24 +149,24 @@ private: // -- data -- //
 public: // -- ctor / dtor / asgn -- //
 
 	// creates a fate object that is not associated with a function object (empty)
-	inline constexpr fate() noexcept : func(nullptr) {}
+	constexpr fate() noexcept : func(nullptr) {}
 
 	// creates a fate object for the given function
-	inline constexpr explicit fate(T(*f)()) noexcept : func(f) {}
+	constexpr explicit fate(T(*f)()) noexcept : func(f) {}
 
-	inline ~fate() { (*this)(); }
+	~fate() { (*this)(); }
 
 	fate(const fate&) = delete;
 	fate &operator=(const fate&) = delete;
 	
 	// constructs a new fate object by transfering other's contract to the new instance
-	inline constexpr fate(fate &&other) noexcept : func(other.func)
+	constexpr fate(fate &&other) noexcept : func(other.func)
 	{
 		other.func = nullptr;
 	}
 	// if this instance currently holds a function, it is triggered. after this, other's contract is transfered to this instance.
 	// in the special case of self-assignment, does nothing.
-	inline constexpr fate &operator=(fate &&other) noexcept
+	constexpr fate &operator=(fate &&other) noexcept
 	{
 		if (this != &other)
 		{
@@ -205,15 +198,15 @@ public: // -- utilities -- //
 	}
 
 	// returns true iff this fate object is still associated with a function object
-	inline constexpr explicit operator bool() const noexcept { return func; }
+	constexpr explicit operator bool() const noexcept { return func; }
 	// returns true iff this fate object is not associated with a function object
-	inline constexpr bool operator!() const noexcept { return !func; }
+	constexpr bool operator!() const noexcept { return !func; }
 
 	// returns true iff this fate object is not associated with a function object
-	inline constexpr bool empty() const noexcept { return !func; }
+	constexpr bool empty() const noexcept { return !func; }
 
 	// abandons the function (will no longer be executed at the end of fate's lifetime)
-	inline constexpr void release() noexcept { func = nullptr; }
+	constexpr void release() noexcept { func = nullptr; }
 };
 
 // -------------------------------------------------------------- //
